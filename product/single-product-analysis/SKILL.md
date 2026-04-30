@@ -14,6 +14,16 @@ triggers:
 
 用户输入一个产品 URL，自动抓取产品信息，执行 8 步分析框架 + 7 项需求嗅觉训练，输出完整分析报告。
 
+## 所需能力
+
+执行本技能前，Agent 需要具备以下能力：
+
+- **网页浏览**：访问产品官网，提取功能/定价/目标用户信息
+- **搜索引擎**：搜索产品评论（Reddit/G2/ProductHunt）、竞品定价
+- **文件写入**：输出 Markdown 分析报告到本地
+
+如缺少某项能力，请提示用户安装对应工具后再执行。
+
 ## 输入
 
 用户提供的任意格式，必须包含产品 URL。可能是：
@@ -26,7 +36,7 @@ triggers:
 ### 第一步：识别产品
 
 1. 从用户输入中提取 URL
-2. 如果只有产品名没有 URL，用 web_search 搜索找到官网
+2. 如果只有产品名没有 URL，用搜索引擎找到官网
 3. 确认产品名称和官网地址
 
 ### 第二步：抓取产品信息（并行）
@@ -34,17 +44,17 @@ triggers:
 同时获取以下信息：
 
 1. **官网**：访问产品官网，提取功能、定价、目标用户
-   - 有 Cloudflare 防护 → 用 `mcp_chrome_devtools_*`（headed 模式）
-   - 无防护 → 用 Hermes browser
-   
+   - 有 Cloudflare 防护 → 使用 headed 浏览器模式绕过
+   - 无防护 → 直接用浏览器访问
+
 2. **TrustMRR 数据**：搜索 `site:trustmrr.com {产品名}`，看是否有 MRR 数据
 
-3. **用户评论**：用 web_search 搜索以下关键词（并行）：
+3. **用户评论**：搜索以下关键词（并行）：
    - `{产品名} review site:reddit.com`
    - `{产品名} review site:producthunt.com`
    - `{产品名} review site:g2.com`
    - `{产品名} vs {竞品名}`
-   
+
 4. **竞品信息**：搜索同类产品定价，用于价格锚点分析
 
 ### 第三步：执行分析
@@ -123,7 +133,7 @@ triggers:
 
 ### 交互式输出
 
-分析完成后，先在聊天中给用户一个简洁摘要：
+分析完成后，先给用户一个简洁摘要：
 - 产品名 + 一句话定位
 - 收入估算范围
 - 最值得关注的 1 个洞察
@@ -154,20 +164,20 @@ tags: [产品分析, single, ...]
 
 ## 数据源访问方案
 
-### Cloudflare 防护站点 → Chrome DevTools MCP（headed 模式）
+### Cloudflare 防护站点
 
-部分产品官网（如 Toolify、TAAFT 等）有 Cloudflare Turnstile 防护。**Hermes 内置 browser（headless）会被拦截**，需要用 Chrome DevTools MCP 的 headed 模式绕过。
+部分产品官网（如 Toolify、TAAFT 等）有 Cloudflare Turnstile 防护。headless 浏览器会被拦截。
 
-**操作流程：**
-1. 用 `mcp_chrome_devtools_new_page` 打开目标 URL
-2. 用 `mcp_chrome_devtools_take_snapshot` 获取页面内容
-3. 用 `mcp_chrome_devtools_evaluate_script` 提取结构化数据
+**解决方案**：使用 headed 浏览器模式（真实 Chrome/Chromium 窗口），或专门的 Cloudflare 绕过工具。
 
-**配置前提：** `~/.hermes/config.yaml` 中 `mcp_servers.chrome-devtools` 已配置（不加 `--headless`）。
+**操作流程**：
+1. 用 headed 浏览器打开目标 URL
+2. 等待 Cloudflare 验证通过
+3. 提取页面内容（快照或 DOM 解析）
 
-### 无防护站点 → Hermes browser
+### 无防护站点
 
-大部分产品官网可以直接用 Hermes browser 访问。
+大部分产品官网可以直接用浏览器访问。
 
 ## Pitfalls
 
@@ -178,16 +188,11 @@ tags: [产品分析, single, ...]
 - **TrustMRR 不一定有数据**：只覆盖一部分产品，没有就跳过
 - **综合评分要诚实**：不要每个产品都给高分，烂产品就直说烂
 
-### 搜索工具降级策略（实测踩坑 2026-04）
+### 搜索降级策略
 
-搜索评论和竞品信息时，工具可能按以下顺序失败：
-1. **Tavily API** → 可能 429 (Insufficient balance)，完全不可用
-2. **Google Search** → headless browser 被检测，返回 CAPTCHA/sorry 页面
-3. **Bing Search（Hermes browser）**→ 可能被重定向到 cn.bing.com，结果解析不到（返回无关内容）
-4. **ProductHunt / G2** → Cloudflare Turnstile 防护，headless 无法访问
+搜索评论和竞品信息时，工具可能按以下顺序失败。建议按优先级尝试多种搜索方式：
 
-**推荐搜索顺序**：
-1. Chrome DevTools MCP 访问 Bing（`ensearch=1` 强制国际版）+ `evaluate_script` 提取结果
-2. Chrome DevTools MCP 直接访问评价站点（Goodfirms、opentools.ai、SaaSBrowser）
-3. Hermes browser 访问 DuckDuckGo HTML 版（`html.duckduckgo.com`）
+1. 国际版搜索引擎（强制英文结果）
+2. 直接访问评价站点（Goodfirms、opentools.ai、SaaSBrowser）
+3. HTML 版搜索引擎（如 DuckDuckGo HTML 版）
 4. 都失败 → 基于官网信息 + 推理完成分析，标注"未找到真实评论"

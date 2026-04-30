@@ -13,7 +13,19 @@ triggers:
 
 # 每日产品分析教练
 
-训练 Bruce 的需求嗅觉。每次从三个来源选 3 个有逻辑关联的产品，执行 8 步分析框架。
+训练需求嗅觉。每次从三个来源选 3 个有逻辑关联的产品，执行 8 步分析框架。
+
+## 所需能力
+
+执行本技能前，Agent 需要具备以下能力：
+
+- **网页浏览**：访问产品官网和数据源站点（TrustMRR、Toolify、TAAFT）
+- **搜索引擎**：搜索产品评论、竞品、定价
+- **Cloudflare 绕过**：Toolify.ai 和 TAAFT 部分页面有 Turnstile 防护，需要 headed 浏览器模式
+- **文件写入**：输出 Markdown 分析报告到本地
+- **并行任务执行**（可选）：同时抓取多个数据源以提升效率
+
+如缺少某项能力，请提示用户安装对应工具后再执行。
 
 ## 核心约束
 
@@ -22,15 +34,14 @@ triggers:
 - **逻辑关联**：3 个产品之间必须有明确的对比/替代/纵向关系
 - **4000 字以内**（8步框架+7项附加内容较多，单产品约1000-1200字是合理密度）
 - **输出到 `~/产品分析/` 目录**（Markdown + YAML frontmatter）
-- **Obsidian 兼容格式**
 
 ## 三个数据来源
 
 | 来源 | URL | 价值 | 注意事项 |
 |------|-----|------|----------|
 | **TrustMRR** | https://trustmrr.com | 已验证 MRR 数据，真实标杆 | Feed 页面可直接抓取；产品详情页 `/startup/{name}` 有收入图表、定价、技术栈 |
-| **Toolify.ai** | https://www.toolify.ai/zh/ | AI 工具目录，按类别发现 | ⚠️ **Cloudflare 防护**，必须用 Chrome DevTools MCP（headed 模式）绕过。见下方「数据源访问方案」 |
-| **There's An AI For That** | https://theresanaiforthat.com | 按任务反向找 AI 工具 | 首页可直接抓取 trending + 最新工具；详情页 `/ai/{name}` 被 Cloudflare 拦截时用 DevTools MCP |
+| **Toolify.ai** | https://www.toolify.ai/zh/ | AI 工具目录，按类别发现 | ⚠️ **Cloudflare 防护**，必须用 headed 浏览器模式绕过。见「数据源访问方案」 |
+| **There's An AI For That** | https://theresanaiforthat.com | 按任务反向找 AI 工具 | 首页可直接抓取 trending + 最新工具；详情页 `/ai/{name}` 被 Cloudflare 拦截时用 headed 浏览器 |
 
 ## 选品规律（三选一，轮流使用）
 
@@ -145,74 +156,62 @@ tags: [产品分析, ...]
 
 1. **回忆历史**：读取 `~/产品分析/` 下所有文件，提取已分析产品清单
 2. **抓取数据**：
-   - **TrustMRR**：用 Hermes browser（无防护）
-   - **Toolify.ai**：用 `mcp_chrome_devtools_new_page` + `mcp_chrome_devtools_take_snapshot`（Cloudflare 防护）
-   - **TAAFT**：首页用 Hermes browser；详情页用 DevTools MCP
-   - 用 `delegate_task` 并行抓取多个来源
+   - **TrustMRR**：直接浏览器访问（无防护）
+   - **Toolify.ai**：headed 浏览器模式（Cloudflare 防护）
+   - **TAAFT**：首页直接访问；详情页用 headed 浏览器
+   - 如支持并行任务，可同时抓取多个来源
 3. **选品**：按规律选出 3 个产品，说明逻辑
-4. **深度分析**：对每个产品补充信息（官网/搜索），执行 8 步分析。产品官网如有 Cloudflare 防护，也用 DevTools MCP
+4. **深度分析**：对每个产品补充信息（官网/搜索），执行 8 步分析。产品官网如有 Cloudflare 防护，同样用 headed 浏览器
 5. **写入文件**：完整 Markdown + YAML frontmatter
 6. **汇总**：更新已分析产品清单
 
 ## 数据源访问方案
 
-### Cloudflare 防护站点 → Chrome DevTools MCP（headed 模式）
+### Cloudflare 防护站点 → Headed 浏览器模式
 
-Toolify.ai 和 TAAFT 部分页面有 Cloudflare Turnstile 防护。**Hermes 内置 browser（headless）会被拦截**，需要用 Chrome DevTools MCP 的 headed 模式绕过。
+Toolify.ai 和 TAAFT 部分页面有 Cloudflare Turnstile 防护。headless 浏览器会被拦截，需要使用 headed 模式（真实 Chrome/Chromium 窗口）。
 
-**操作流程：**
-1. 用 `mcp_chrome_devtools_new_page` 打开目标 URL
-2. 用 `mcp_chrome_devtools_take_snapshot` 获取页面内容（带 uid）
-3. 用 `mcp_chrome_devtools_click` / `mcp_chrome_devtools_fill` 交互
-4. 用 `mcp_chrome_devtools_evaluate_script` 提取结构化数据（比 snapshot 更可靠）
+**操作流程**：
+1. 启动 headed 浏览器（真实窗口，会弹出到前台）
+2. 导航到目标 URL
+3. 等待 Cloudflare 验证通过
+4. 获取页面快照或通过 DOM 解析提取数据
 
-**为什么有效：** Headed 模式启动真实 Chrome 窗口，有完整渲染管线（WebGL、GPU、鼠标轨迹），Turnstile 无法区分自动化和正常用户。HeadlessChrome 的 UA 会被直接拒绝。
+**为什么有效**：Headed 模式有完整渲染管线（WebGL、GPU、鼠标轨迹），Turnstile 无法区分自动化和正常用户。HeadlessChrome 的 UA 会被直接拒绝。
 
-**配置前提：** `~/.hermes/config.yaml` 中 `mcp_servers.chrome-devtools` 已配置（`npx -y chrome-devtools-mcp@latest --isolated`，**不加 `--headless`**）。
+**注意**：headed 模式需要桌面环境（有显示器），服务器/headless 环境不适用。
 
-### 无防护站点 → Hermes browser / delegate_task
+### 无防护站点 → 直接浏览器访问
 
-TrustMRR 等无 Cloudflare 防护的站点，直接用 Hermes 内置 browser 或 `delegate_task` 抓取。
+TrustMRR 等无 Cloudflare 防护的站点，直接用浏览器抓取。
 
 ## Pitfalls（踩过的坑）
 
 ### 数据源访问问题
-- **Toolify.ai**：用 Chrome DevTools MCP（headed 模式）即可正常访问，2026-04-30 已验证成功
-- **TAAFT 详情页** (`/ai/{name}`)：被 Cloudflare 拦截时，同样用 DevTools MCP
+- **Toolify.ai**：需要 headed 浏览器模式，2026-04-30 已验证可行
+- **TAAFT 详情页** (`/ai/{name}`)：被 Cloudflare 拦截时，同样用 headed 浏览器
 - **TrustMRR**：直接访问即可，无需特殊处理
 - **产品官网** 可能加载超时（尤其是新站），不要死等，用已有数据+搜索补充
 - **搜索引擎**（Google/Bing/DuckDuckGo）可能返回 JS 渲染页面或空结果
 
-### 推荐：用 delegate_task 并行抓取
-- 每个来源分配一个子任务并行抓取，节省时间
-- **Cloudflare 防护站点**（Toolify/TAAFT详情页）：子任务中用 `mcp_chrome_devtools_*` 工具
-- **无防护站点**（TrustMRR/TAAFT首页）：子任务中用 Hermes browser
-- 用 `mcp_chrome_devtools_evaluate_script` 提取结构化数据比 `mcp_chrome_devtools_take_snapshot` 更可靠
+### 推荐：并行抓取
+- 如支持并行任务执行，每个来源分配一个子任务并行抓取，节省时间
+- **Cloudflare 防护站点**（Toolify/TAAFT详情页）：子任务中使用 headed 浏览器
+- **无防护站点**（TrustMRR/TAAFT首页）：子任务中使用普通浏览器
 - 设置合理的 timeout，避免单个来源卡住整个流程
 
-### ⚠️ 效率与 Token 控制（2026-04-30 实测）
-- **TrustMRR scraping 很慢**：delegate_task 搜索/浏览 TrustMRR 耗时 326s、50 次 API 调用、1.5M input tokens，最终还 hit max_iterations。**对策**：给子任务明确指定"只看 Feed 前 20 个产品"或"直接导航到某个分类页面"，不要让 agent 自己探索
-- **三源并行总耗时约 10 分钟**（TrustMRR 326s + Toolify 105s + TAAFT 224s），产品调研再 346s。整条流水线约 15-20 分钟
-- **Token 消耗大**：单次完整分析消耗约 2-3M input tokens（主力模型 glm-5.1 成本低所以可接受）
-- **TrustMRR 的分类页面和 Top 100 链接经常 404**，搜索下拉框只返回 10 条且无法筛选 MRR 上限——直接用 Feed 页面更稳
+### ⚠️ 效率与资源控制
+- **TrustMRR 抓取较慢**：建议明确限定抓取范围（如"只看 Feed 前 20 个产品"），不要让 agent 无限制探索
+- **三源并行总耗时约 10-15 分钟**，完整流水线约 15-20 分钟
+- **TrustMRR 的分类页面和 Top 100 链接经常 404**，搜索下拉框只返回有限结果——直接用 Feed 页面更稳
 
-### Obsidian Vault
-- Bruce 的机器上**未找到** Obsidian vault（2026-04-30 确认）
-- 当前输出到 `~/产品分析/` 目录，纯 Markdown 文件
-- 如果后续配置了 Obsidian，需要迁移文件到 vault 内
+### 搜索降级策略
 
-### 搜索工具降级策略（实测踩坑 2026-04）
+搜索用户评论和竞品信息时，工具可能大面积失败。建议按优先级尝试多种搜索方式：
 
-搜索用户评论和竞品信息时，工具可能大面积失败：
-1. **Tavily API** → 可能 429 (Insufficient balance)
-2. **Google Search** → headless browser 被检测返回 CAPTCHA
-3. **Bing (Hermes browser)** → 可能重定向 cn.bing.com，结果解析不到
-4. **ProductHunt / G2** → Cloudflare Turnstile 防护
-
-**推荐搜索顺序**：
-1. Chrome DevTools MCP 访问 Bing（`ensearch=1`）+ `evaluate_script`
-2. Chrome DevTools MCP 直接访问评价站点（Goodfirms、opentools.ai、SaaSBrowser）
-3. Hermes browser 访问 DuckDuckGo HTML 版（`html.duckduckgo.com`）
+1. 国际版搜索引擎（强制英文结果）
+2. 直接访问评价站点（Goodfirms、opentools.ai、SaaSBrowser）
+3. HTML 版搜索引擎（如 DuckDuckGo HTML 版）
 4. 都失败 → 基于已有数据推理，标注"未找到真实评论"
 
 ### 报告字数
@@ -226,4 +225,3 @@ TrustMRR 等无 Cloudflare 防护的站点，直接用 Hermes 内置 browser 或
 
 | # | 日期 | 产品 | 来源 | MRR |
 |---|------|------|------|-----|
-|
