@@ -222,13 +222,8 @@ TrustMRR 等无 Cloudflare 防护的站点，直接用 Hermes 内置 browser 或
 
 ## 已分析产品索引
 
-此 section 由 agent 在每次分析后更新。
+此 section 由 agent 在每次分析后更新。初始为空，安装后根据本地分析记录自动累积。
 
 | # | 日期 | 产品 | 来源 | MRR |
 |---|------|------|------|-----|
-| 1 | 2026-04-30 | Tokscript | TrustMRR | $7,101 |
-| 2 | 2026-04-30 | Blotato | TAAFT | $4K-$37.5K |
-| 3 | 2026-04-30 | Docsio | TAAFT | $9K-$60K |
-| 4 | 2026-04-30 | Presscart | TrustMRR | $12,989 |
-| 5 | 2026-04-30 | Mailmodo AI | Toolify.ai | $40K-$96K |
-| 6 | 2026-04-30 | Watermelon | TAAFT | $44K-$123K |
+|
